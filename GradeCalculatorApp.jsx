@@ -16,8 +16,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
    ปล่อยว่างไว้ได้ = แอปจะทำงานแบบออฟไลน์ (เก็บใน localStorage + ลิงก์ฝังข้อมูลแบบเดิม)
    anon key เป็น public key ใส่ในหน้าเว็บได้ (ไม่มีระบบล็อกอิน RLS เปิด public อยู่แล้ว)
    ============================================================ */
-const SUPABASE_URL = "";       // เช่น "https://xxxxxxxx.supabase.co"
-const SUPABASE_ANON_KEY = "";  // เช่น "eyJhbGciOi..."
+const SUPABASE_URL = "https://tlrkdkepqudrzleaahyz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRscmtka2VwcXVkcnpsZWFhaHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4MzA4MDQsImV4cCI6MjA5OTQwNjgwNH0.I0nX8gESTmmRkpcmjJnUDKnF-2GckrieQdO-HQJtyJ0";
 
 // สร้าง client เฉพาะเมื่อ config ครบ + ไลบรารี supabase โหลดสำเร็จ (มาจาก CDN ใน index.html)
 const sb =
