@@ -1,31 +1,4 @@
-<!doctype html>
-<html lang="th">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#E4DED0" />
-<title>คำนวณเกรด · Digital Design</title>
-<style>
-  html,body{margin:0;padding:0;min-height:100%;background:#E4DED0;}
-  #root{min-height:100vh;}
-  *{-webkit-tap-highlight-color:transparent;}
-  .gc-boot{min-height:100vh;display:flex;align-items:center;justify-content:center;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif;
-    color:rgba(44,38,30,.6);font-size:14px;font-weight:700;}
-</style>
-</head>
-<body>
-<div id="root"><div class="gc-boot">กำลังโหลด…</div></div>
-
-<!-- React + Babel + Supabase จาก CDN (ไม่ต้องมี build tool / Node) -->
-<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" crossorigin></script>
-<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
-
-<script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo, useCallback } = React;
-
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 
 /* ============================================================
    GPA / เกียรตินิยม Calculator — Digital Design (133 หน่วยกิต)
@@ -397,7 +370,7 @@ const ACCENTS = [
 /* ============================================================
    MAIN APP
    ============================================================ */
-function App() {
+export default function App() {
   const [courses, setCourses] = useState([]);
   const [theme, setTheme] = useState("light");
   const [accent, setAccent] = useState("#3F6E64");
@@ -1782,10 +1755,3 @@ select.gc-input{appearance:none;-webkit-appearance:none;
 .gc-sheet-wrap.center .gc-toast{}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 `;
-
-
-const _root = ReactDOM.createRoot(document.getElementById("root"));
-_root.render(<App />);
-</script>
-</body>
-</html>
