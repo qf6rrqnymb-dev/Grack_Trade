@@ -52,6 +52,43 @@ const sb =
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
+/* ============================================================
+   [GEMINI CONFIG] — AI ช่วยวิเคราะห์แนวโน้มสายอาชีพ (ไม่บังคับ)
+   ------------------------------------------------------------
+   1) ขอ API key ฟรีที่ https://aistudio.google.com/apikey
+   2) ⚠️ สำคัญ: ไปที่ Google Cloud Console → Credentials → เปิดคีย์นั้น
+      → Application restrictions = "Websites (HTTP referrers)"
+        ใส่โดเมนของคุณ เช่น  https://qf6rrqnymb-dev.github.io/*
+      → API restrictions = "Generative Language API"
+      (เพราะคีย์จะโผล่ในหน้าเว็บ · การจำกัดโดเมน + free tier ช่วยกันคนอื่นแอบใช้)
+   3) วางคีย์ด้านล่าง แล้วรัน python3 build.py
+   ปล่อยว่าง = ปิดฟีเจอร์ AI (ใช้การวิเคราะห์ heuristic อย่างเดียว)
+   ============================================================ */
+const GEMINI_API_KEY = "";
+const GEMINI_MODEL = "gemini-2.5-flash";
+const AI_ENABLED = GEMINI_API_KEY.trim().length > 10;
+
+async function callGemini(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 700 },
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Gemini ${res.status} · ${t.slice(0, 160)}`);
+  }
+  const data = await res.json();
+  const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  const text = parts ? parts.map((p) => p.text || "").join("") : "";
+  if (!text.trim()) throw new Error("Gemini ตอบกลับว่าง ลองใหม่อีกครั้ง");
+  return text.trim();
+}
+
 /* ---------- 1. โครงสร้างหลักสูตร + ตารางเกรด (Source of Truth) ---------- */
 
 const GRADE_POINTS = {
@@ -1141,6 +1178,29 @@ function LineChart({ data }) {
 /* แนวโน้มสายอาชีพ — heuristic จากรายวิชาจริง (โชว์ในแท็บภาพรวม) */
 function CareerTrend({ courses }) {
   const { top, hasEnough } = useMemo(() => analyzeCareer(courses), [courses]);
+  const [aiText, setAiText] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiErr, setAiErr] = useState("");
+
+  const runAI = async () => {
+    setAiLoading(true); setAiErr(""); setAiText("");
+    try {
+      const summary = top
+        .map((t) => `- ${t.name}: GPA เฉลี่ย ${t.gpaCredits > 0 ? round2(t.gpa) : "-"} จาก ${t.count} วิชา (${t.courses.map((c) => `${c.code} ${c.name}`).join(", ")})`)
+        .join("\n");
+      const prompt =
+        `คุณเป็นที่ปรึกษาแนะแนวอาชีพสำหรับนักศึกษาสาขา Digital Design\n` +
+        `ต่อไปนี้คือ "แทร็กทักษะ" ที่เด่นของนักศึกษา คิดจากรายวิชาที่ลงเรียนและเกรด (สเกล GPA 0-4):\n\n${summary}\n\n` +
+        `ช่วยเขียนคำแนะนำแนวทางอาชีพเป็นภาษาไทย กระชับ เป็นกันเอง (ไม่เกิน 5 ประโยค) โดย ` +
+        `(1) ชี้จุดแข็งจากแทร็กที่เด่นที่สุด (2) แนะนำตำแหน่งงาน/สายอาชีพที่เหมาะ 2-3 อย่าง ` +
+        `(3) บอกทักษะหรือวิชาที่ควรเสริมต่อ · ห้ามสัญญาผลลัพธ์ ให้เป็นเพียงคำแนะนำเบื้องต้น`;
+      setAiText(await callGemini(prompt));
+    } catch (e) {
+      setAiErr((e && e.message) || "เรียก AI ไม่สำเร็จ ลองใหม่อีกครั้ง");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   if (!hasEnough) {
     return (
@@ -1176,6 +1236,28 @@ function CareerTrend({ courses }) {
         {Ic.warn}
         <span>ประเมินจากเกรดวิชาที่ลงเรียนเท่านั้น เป็นแนวทางเบื้องต้น ไม่ใช่การประเมินทางจิตวิทยาอาชีพ · ควรปรึกษาอาจารย์แนะแนวหรือผู้เชี่ยวชาญเพิ่มเติม</span>
       </div>
+
+      {AI_ENABLED && (
+        <div className="gc-ai">
+          {!aiText && !aiLoading && (
+            <button className="gc-btn gc-btn-outline gc-btn-block" onClick={runAI}>
+              ✨ ให้ AI ช่วยวิเคราะห์เพิ่มเติม
+            </button>
+          )}
+          {aiLoading && <div className="gc-chart-empty" style={{ marginTop: 4 }}>กำลังให้ Gemini วิเคราะห์…</div>}
+          {aiErr && <p className="gc-inline-warn" style={{ marginTop: 8 }}>{Ic.warn} {aiErr}</p>}
+          {aiText && (
+            <div className="gc-ai-box">
+              <div className="gc-ai-head">
+                <span className="gc-ai-badge">✨ AI · Gemini</span>
+                <button className="gc-link" onClick={runAI}>วิเคราะห์ใหม่</button>
+              </div>
+              <p className="gc-ai-text">{aiText}</p>
+              <p className="gc-ai-note">สร้างโดย AI · เป็นความเห็นประกอบ ควรใช้วิจารณญาณและปรึกษาอาจารย์แนะแนวเพิ่มเติม</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1598,6 +1680,15 @@ select.gc-input{appearance:none;-webkit-appearance:none;
 .gc-disclaimer{display:flex;gap:7px;align-items:flex-start;font-size:11px;color:var(--muted);
   line-height:1.5;margin-top:4px;background:var(--surface-2);border-radius:12px;padding:9px 12px;}
 .gc-disclaimer svg{width:14px;height:14px;flex:none;margin-top:1px;color:var(--warning);}
+
+/* AI (Gemini) analysis block */
+.gc-ai{margin-top:12px;}
+.gc-ai-box{border:2px solid var(--primary);border-radius:16px;padding:14px 16px;background:var(--surface-2);}
+.gc-ai-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.gc-ai-badge{font-size:11px;font-weight:800;color:var(--on-primary);background:var(--primary);
+  padding:4px 11px;border-radius:999px;letter-spacing:.02em;}
+.gc-ai-text{font-size:13px;line-height:1.6;white-space:pre-wrap;}
+.gc-ai-note{font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
 
 /* Dialog */
 .gc-dialog{width:100%;max-width:340px;background:var(--surface);border:2px solid var(--line);
