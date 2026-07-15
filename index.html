@@ -405,7 +405,6 @@ function App() {
   const [tab, setTab] = useState("dashboard");
   const [loaded, setLoaded] = useState(false);
   const [fromLink, setFromLink] = useState(false); // เปิดมาจากลิงก์ที่แชร์
-  const [shareOpen, setShareOpen] = useState(false);
   const [subId, setSubId] = useState(null);   // id ของ submission บน Supabase (ถ้ามี)
   const [mode, setMode] = useState("local");  // "supabase" | "local"
   const saveTimer = React.useRef(null);
@@ -457,16 +456,6 @@ function App() {
       <style>{CSS}</style>
 
       <div className="gc-frame">
-        {fromLink && (
-          <div className="gc-sharednote">
-            {Ic.link}
-            <span>
-              {mode === "supabase"
-                ? "กำลังดูงานที่แชร์ผ่านลิงก์ · แก้ไขได้และจะบันทึกกลับไปที่ลิงก์เดียวกัน (ทุกคนที่มีลิงก์เห็นการแก้ไข)"
-                : "กำลังดูข้อมูลที่แชร์มา · แก้ไขได้ (จะไม่กระทบต้นฉบับของผู้ส่ง)"}
-            </span>
-          </div>
-        )}
         <main className="gc-main">
           {tab === "dashboard" && <Dashboard courses={courses} profile={profile} onGoto={setTab} />}
           {tab === "courses" && (
@@ -480,7 +469,6 @@ function App() {
               profile={profile} setProfile={setProfile}
               setCourses={setCourses} showToast={showToast} askConfirm={askConfirm}
               count={courses.length}
-              onShare={() => setShareOpen(true)}
             />
           )}
         </main>
@@ -512,7 +500,6 @@ function App() {
           onOk={() => { confirmState.onOk?.(); setConfirmState(null); }}
         />
       )}
-      {shareOpen && <ShareModal count={courses.length} subId={subId} mode={mode} showToast={showToast} onClose={() => setShareOpen(false)} />}
     </div>
   );
 }
@@ -1196,7 +1183,7 @@ function CareerTrend({ courses }) {
 /* ============================================================
    SETTINGS
    ============================================================ */
-function Settings({ theme, setTheme, accent, setAccent, profile, setProfile, setCourses, showToast, askConfirm, count, onShare }) {
+function Settings({ theme, setTheme, accent, setAccent, profile, setProfile, setCourses, showToast, askConfirm, count }) {
   return (
     <div className="gc-view">
       <header className="gc-head">
@@ -1219,19 +1206,6 @@ function Settings({ theme, setTheme, accent, setAccent, profile, setProfile, set
               onChange={(e) => setProfile({ ...profile, sid: e.target.value })} />
           </label>
         </div>
-      </Card>
-
-      {/* ส่งงาน / แชร์ลิงก์ */}
-      <Card>
-        <div className="gc-row-between gc-mb">
-          <div>
-            <p className="gc-card-title">ส่งงานให้อาจารย์</p>
-            <p className="gc-muted-sm">สร้างลิงก์ที่มีข้อมูลของคุณติดไปด้วย</p>
-          </div>
-          <span className="gc-share-ic">{Ic.link}</span>
-        </div>
-        <button className="gc-btn gc-btn-primary gc-btn-block" onClick={onShare}>สร้างลิงก์ส่งอาจารย์</button>
-        <p className="gc-muted-sm gc-share-hint">อาจารย์เปิดลิงก์แล้วจะเห็นข้อมูลที่คุณกรอกทันที · แก้ข้อมูลเพิ่มแล้วสร้างลิงก์ใหม่เพื่อส่งอีกครั้ง</p>
       </Card>
 
       <Card>
@@ -1344,70 +1318,6 @@ function ConfirmDialog({ title, body, okLabel = "ตกลง", danger, onOk, on
   );
 }
 
-function ShareModal({ count, subId, mode, showToast, onClose }) {
-  const [url, setUrl] = useState("");
-  const [copied, setCopied] = useState(false);
-  const inputRef = React.useRef(null);
-  const isBackend = mode === "supabase" && !!subId;
-
-  useEffect(() => {
-    setUrl(isBackend ? shortShareUrl(subId) : currentShareUrl());
-  }, [isBackend, subId]);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      showToast("คัดลอกลิงก์แล้ว");
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback: เลือกข้อความในช่องให้ผู้ใช้กดคัดลอกเอง
-      if (inputRef.current) {
-        inputRef.current.select();
-        try { document.execCommand("copy"); showToast("คัดลอกลิงก์แล้ว"); }
-        catch { showToast("กดค้างที่ลิงก์เพื่อคัดลอก"); }
-      }
-    }
-  };
-
-  const tooLong = !isBackend && url.length > 8000; // เตือนเฉพาะโหมดฝังข้อมูลในลิงก์
-
-  return (
-    <div className="gc-sheet-wrap center" onClick={onClose}>
-      <div className="gc-dialog gc-share" onClick={(e) => e.stopPropagation()}>
-        <div className="gc-share-head">
-          <span className="gc-share-badge">{Ic.link}</span>
-          <button className="gc-iconbtn" onClick={onClose}>{Ic.x}</button>
-        </div>
-        <h3 className="gc-dialog-title">ลิงก์ส่งอาจารย์</h3>
-        <p className="gc-dialog-body">
-          {isBackend
-            ? `ลิงก์สั้นนี้ชี้ไปยังข้อมูล ${count} วิชาของคุณบนระบบออนไลน์ · ส่งให้อาจารย์แล้วเปิดได้ทันทีโดยไม่ต้องล็อกอิน`
-            : `ลิงก์นี้มีข้อมูล ${count} วิชาของคุณอยู่ในตัว · ส่งให้อาจารย์แล้วเปิดได้ทันทีโดยไม่ต้องล็อกอิน`}
-        </p>
-
-        <div className="gc-share-box">
-          <input ref={inputRef} className="gc-share-input gc-num" readOnly value={url} onFocus={(e) => e.target.select()} />
-        </div>
-
-        {tooLong && (
-          <p className="gc-inline-warn" style={{ marginTop: 10 }}>
-            {Ic.warn} ข้อมูลเยอะจนลิงก์ยาวมาก บางแอปแชตอาจตัดลิงก์ — ถ้าเป็นปัญหาแนะนำใช้ Supabase
-          </p>
-        )}
-
-        <button className={`gc-btn gc-btn-primary gc-btn-block gc-btn-lg ${copied ? "is-done" : ""}`} onClick={copy}>
-          {copied ? <>{Ic.check} คัดลอกแล้ว</> : "คัดลอกลิงก์"}
-        </button>
-        <p className="gc-muted-sm gc-share-hint">
-          {isBackend
-            ? "ข้อมูลบันทึกออนไลน์อัตโนมัติ · แก้ทีหลังแล้วลิงก์เดิมจะอัปเดตให้เอง ไม่ต้องส่งลิงก์ใหม่"
-            : "เคล็ดลับ: กรอก/แก้ข้อมูลให้เสร็จก่อน แล้วค่อยกดคัดลอกลิงก์ — ลิงก์จะเก็บข้อมูล ณ ตอนที่คัดลอก"}
-        </p>
-      </div>
-    </div>
-  );
-}
 function catShort(id) {
   const found = SELECTABLE.find((s) => s.id === id);
   return found ? found.name.replace("กลุ่มวิชา", "").replace("หมวดวิชา", "") : id;
