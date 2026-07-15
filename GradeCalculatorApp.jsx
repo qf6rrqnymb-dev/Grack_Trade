@@ -37,7 +37,7 @@ const sb =
    3) วางคีย์ด้านล่าง แล้วรัน python3 build.py
    ปล่อยว่าง = ปิดฟีเจอร์ AI (ใช้การวิเคราะห์ heuristic อย่างเดียว)
    ============================================================ */
-const GEMINI_API_KEY = "";
+const GEMINI_API_KEY = "AQ.Ab8RN6K0E5AoInvWscKJR2vqQ0e1qyIoFcDHoDaTkSTr5_dRNQ";
 const GEMINI_MODEL = "gemini-2.5-flash";
 const AI_ENABLED = GEMINI_API_KEY.trim().length > 10;
 
