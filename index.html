@@ -64,8 +64,8 @@ const sb =
    3) วางคีย์ด้านล่าง แล้วรัน python3 build.py
    ปล่อยว่าง = ปิดฟีเจอร์ AI (ใช้การวิเคราะห์ heuristic อย่างเดียว)
    ============================================================ */
-const GEMINI_API_KEY = "AQ.Ab8RN6K0E5AoInvWscKJR2vqQ0e1qyIoFcDHoDaTkSTr5_dRNQ";
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_API_KEY = ""; // ← วางคีย์ที่นี่ (ดู README · ต้องเป็นคีย์ที่มีโควตา)
+const GEMINI_MODEL = "gemini-2.0-flash"; // เปลี่ยนได้: gemini-flash-latest ฯลฯ (gemini-2.5-flash บล็อกบัญชีใหม่)
 const AI_ENABLED = GEMINI_API_KEY.trim().length > 10;
 
 async function callGemini(prompt) {
