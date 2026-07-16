@@ -53,40 +53,33 @@ const sb =
     : null;
 
 /* ============================================================
-   [GEMINI CONFIG] — AI ช่วยวิเคราะห์แนวโน้มสายอาชีพ (ไม่บังคับ)
+   [AI CONFIG] — วิเคราะห์/แชทเรื่องอาชีพ ผ่าน Supabase Edge Function
    ------------------------------------------------------------
-   1) ขอ API key ฟรีที่ https://aistudio.google.com/apikey
-   2) ⚠️ สำคัญ: ไปที่ Google Cloud Console → Credentials → เปิดคีย์นั้น
-      → Application restrictions = "Websites (HTTP referrers)"
-        ใส่โดเมนของคุณ เช่น  https://qf6rrqnymb-dev.github.io/*
-      → API restrictions = "Generative Language API"
-      (เพราะคีย์จะโผล่ในหน้าเว็บ · การจำกัดโดเมน + free tier ช่วยกันคนอื่นแอบใช้)
-   3) วางคีย์ด้านล่าง แล้วรัน python3 build.py
-   ปล่อยว่าง = ปิดฟีเจอร์ AI (ใช้การวิเคราะห์ heuristic อย่างเดียว)
+   คีย์ Gemini อยู่ฝั่ง server (Supabase secret) ไม่โผล่ในหน้าเว็บ
+   → GitHub ไม่บล็อก · ไม่ต้องจำกัด referrer · คีย์ไม่รั่ว
+   วิธีตั้ง (ดู README หัวข้อ "AI ผ่าน Supabase Edge Function"):
+     1) deploy function ชื่อ "career-ai" (โค้ด: supabase/functions/career-ai/index.ts)
+     2) ตั้ง secret ใน Supabase: GEMINI_API_KEY (คีย์ที่มีโควตา!) · GEMINI_MODEL (ถ้าต้องการ)
+   AI จะเปิดใช้อัตโนมัติเมื่อ Supabase ถูกตั้งค่าแล้ว
    ============================================================ */
-const GEMINI_API_KEY = ""; // ← วางคีย์ที่นี่ (ดู README · ต้องเป็นคีย์ที่มีโควตา)
-const GEMINI_MODEL = "gemini-2.0-flash"; // เปลี่ยนได้: gemini-flash-latest ฯลฯ (gemini-2.5-flash บล็อกบัญชีใหม่)
-const AI_ENABLED = GEMINI_API_KEY.trim().length > 10;
+const AI_FN = "career-ai";        // ชื่อ Edge Function
+const AI_ENABLED = !!sb;          // เปิดเมื่อ Supabase พร้อม (คีย์อยู่ฝั่ง server)
 
 async function callGemini(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-  const res = await fetch(url, {
+  if (!sb) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${AI_FN}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 700 },
-    }),
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "apikey": SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ prompt }),
   });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`Gemini ${res.status} · ${t.slice(0, 160)}`);
-  }
-  const data = await res.json();
-  const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
-  const text = parts ? parts.map((p) => p.text || "").join("") : "";
-  if (!text.trim()) throw new Error("Gemini ตอบกลับว่าง ลองใหม่อีกครั้ง");
-  return text.trim();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `AI ${res.status} (ตรวจว่า deploy function "${AI_FN}" + ตั้ง GEMINI_API_KEY แล้ว)`);
+  if (!data.text || !data.text.trim()) throw new Error("AI ตอบกลับว่าง ลองใหม่อีกครั้ง");
+  return data.text.trim();
 }
 
 /* ---------- 1. โครงสร้างหลักสูตร + ตารางเกรด (Source of Truth) ---------- */

@@ -67,33 +67,35 @@ python3 build.py
 
 ---
 
-## 🤖 ตั้งค่า Gemini (ไม่บังคับ — สำหรับปุ่ม "ให้ AI ช่วยวิเคราะห์")
+## 🤖 AI ผ่าน Supabase Edge Function (ไม่บังคับ — ปุ่ม "ให้ AI ช่วยวิเคราะห์" + แชทถามอาชีพ)
 
-ถ้าไม่ตั้งค่า ปุ่ม AI จะถูกซ่อน แอปยังใช้การวิเคราะห์แบบ heuristic ได้ตามปกติ
+ฟีเจอร์ AI เรียก Gemini **ผ่าน Supabase Edge Function** เพื่อให้ **คีย์อยู่ฝั่ง server** (ไม่โผล่ในหน้าเว็บ ·
+GitHub ไม่บล็อก · ไม่ต้องจำกัด referrer) แอปจะเปิดฟีเจอร์ AI อัตโนมัติเมื่อ Supabase ถูกตั้งค่าแล้ว
+ถ้ายังไม่ deploy function การกดจะขึ้น error สุภาพ ส่วนวิเคราะห์แบบ heuristic ใช้ได้ตามปกติ
 
-1. ขอ API key ฟรีที่ [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. **⚠️ จำกัดคีย์ก่อนใช้** (เพราะคีย์จะฝังในหน้าเว็บ public) — ที่ Google Cloud Console → **Credentials**
-   → เปิดคีย์นั้น → ตั้ง:
-   - **Application restrictions** = `Websites (HTTP referrers)` → ใส่โดเมน เช่น `https://qf6rrqnymb-dev.github.io/*`
-   - **API restrictions** = `Generative Language API`
-   - ใช้ **free tier** เท่านั้น (rate limit ช่วยจำกัดความเสียหายถ้าคีย์รั่ว)
-3. วางคีย์ในบล็อก `[GEMINI CONFIG]` บนสุดของ `GradeCalculatorApp.jsx`:
-   ```js
-   const GEMINI_API_KEY = "AIzaSy...";
-   ```
-4. รัน `python3 build.py` → commit → deploy
+**ขั้นตอน (ทำครั้งเดียว):**
 
-> **ทำไมไม่ใช้ backend?** เพราะเลือกแนวทาง "เรียกตรงจากหน้าเว็บ" เพื่อความง่าย (index เป็น HTML เดียว)
-> ข้อแลกเปลี่ยนคือคีย์มองเห็นได้ จึงต้องจำกัดโดเมน + ใช้ free tier · ถ้าต้องการซ่อนคีย์สนิท
-> ให้ย้ายไปเรียกผ่าน Supabase Edge Function แทน (ต้องตั้งค่าเพิ่ม)
+1. **ได้คีย์ Gemini ที่มีโควตา** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+   ด้วย **บัญชี Gmail ส่วนตัว** (❗ไม่ใช่บัญชีมหาวิทยาลัย/องค์กร ซึ่งมักปิด free tier)
+   ถ้าได้คีย์แต่ยัง `429 limit:0` ต้องเปิด billing ในโปรเจกต์ Google Cloud
+2. **Deploy function** ชื่อ `career-ai` (โค้ดอยู่ที่ [`supabase/functions/career-ai/index.ts`](supabase/functions/career-ai/index.ts)):
+   - **แบบ Dashboard (ง่ายสุด):** Supabase → เมนู **Edge Functions** → **Deploy a new function** →
+     ตั้งชื่อ `career-ai` → วางโค้ดจากไฟล์ข้างบน → Deploy
+   - **แบบ CLI:** `supabase functions deploy career-ai --project-ref tlrkdkepqudrzleaahyz`
+3. **ตั้ง secret** (คีย์อยู่ตรงนี้ ไม่อยู่ในโค้ด):
+   - Dashboard: **Edge Functions → Secrets** (หรือ Project Settings → Edge Functions) →
+     เพิ่ม `GEMINI_API_KEY` = คีย์ของคุณ · (ไม่บังคับ) `GEMINI_MODEL` = `gemini-2.0-flash`
+   - CLI: `supabase secrets set GEMINI_API_KEY=xxxx GEMINI_MODEL=gemini-2.0-flash`
+4. เสร็จ — แอปเรียก `${SUPABASE_URL}/functions/v1/career-ai` ให้อัตโนมัติ (ไม่ต้อง rebuild)
+
+> คีย์ในโหมดนี้เป็นความลับฝั่ง server จึง **ไม่ต้องจำกัด referrer** และ **ไม่หลุดขึ้น repo**
 
 ### แก้ปัญหาที่พบบ่อย
-- **`429 · free_tier ... limit: 0`** = โปรเจกต์ของคีย์นี้ไม่มีโควตา free tier → ลอง (ก) สร้างคีย์ใหม่ด้วย
-  **บัญชี Gmail ส่วนตัว** (ไม่ใช่บัญชีมหาวิทยาลัย/องค์กร ซึ่งมักปิด free tier) หรือ (ข) เปิด billing
-  ในโปรเจกต์ Google Cloud (โมเดล flash ราคาถูกมาก ~เศษสตางค์ต่อครั้ง)
-- **`404 · model ... no longer available to new users`** = โมเดลตกรุ่นสำหรับบัญชีใหม่ → ใช้
-  `gemini-2.0-flash` หรือ `gemini-flash-latest` (ค่าเริ่มต้นตั้งเป็น `gemini-2.0-flash` แล้ว)
-- คีย์ Gemini รุ่นใหม่ขึ้นต้นได้ทั้ง `AIzaSy...` และ `AQ.Ab8...` — ใช้ได้ทั้งคู่
+- **`429 · free_tier ... limit: 0`** = โปรเจกต์ของคีย์นี้ไม่มีโควตา → ใช้คีย์จาก **บัญชี Gmail ส่วนตัว**
+  หรือเปิด **billing** (โมเดล flash ถูกมาก ~เศษสตางค์ต่อครั้ง)
+- **`404 · model no longer available to new users`** = โมเดลตกรุ่น → ตั้ง secret `GEMINI_MODEL=gemini-2.0-flash`
+- **`Failed to fetch` / `AI 404`** = ยังไม่ได้ deploy function `career-ai` หรือตั้งชื่อไม่ตรง
+- คีย์ Gemini ใช้ได้ทั้งแบบ `AIzaSy...` และ `AQ.Ab8...` (แต่แบบ `AQ.` มักผูก service account = ต้องมี billing)
 
 ---
 
@@ -117,4 +119,5 @@ python3 build.py
 | `GradeCalculatorApp.jsx` | ซอร์ส React ที่อ่าน/แก้ง่าย |
 | `build.py` | สร้าง `index.html` จาก `.jsx` |
 | `supabase_schema.sql` | สคีมา + RLS สำหรับ Supabase |
-| `.env.example` | อธิบายค่า Supabase ที่ต้องตั้ง |
+| `supabase/functions/career-ai/index.ts` | Edge Function พร็อกซี Gemini (คีย์อยู่ฝั่ง server) |
+| `.env.example` | อธิบายค่า Supabase + secret ของ Edge Function |
