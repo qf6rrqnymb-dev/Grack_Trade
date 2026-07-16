@@ -25,36 +25,6 @@ const sb =
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
-/* ============================================================
-   [AI CONFIG] — วิเคราะห์/แชทเรื่องอาชีพ ผ่าน Supabase Edge Function
-   ------------------------------------------------------------
-   คีย์ Gemini อยู่ฝั่ง server (Supabase secret) ไม่โผล่ในหน้าเว็บ
-   → GitHub ไม่บล็อก · ไม่ต้องจำกัด referrer · คีย์ไม่รั่ว
-   วิธีตั้ง (ดู README หัวข้อ "AI ผ่าน Supabase Edge Function"):
-     1) deploy function ชื่อ "career-ai" (โค้ด: supabase/functions/career-ai/index.ts)
-     2) ตั้ง secret ใน Supabase: GEMINI_API_KEY (คีย์ที่มีโควตา!) · GEMINI_MODEL (ถ้าต้องการ)
-   AI จะเปิดใช้อัตโนมัติเมื่อ Supabase ถูกตั้งค่าแล้ว
-   ============================================================ */
-const AI_FN = "career-ai";        // ชื่อ Edge Function
-const AI_ENABLED = !!sb;          // เปิดเมื่อ Supabase พร้อม (คีย์อยู่ฝั่ง server)
-
-async function callGemini(prompt) {
-  if (!sb) throw new Error("ยังไม่ได้ตั้งค่า Supabase");
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${AI_FN}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "apikey": SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ prompt }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `AI ${res.status} (ตรวจว่า deploy function "${AI_FN}" + ตั้ง GEMINI_API_KEY แล้ว)`);
-  if (!data.text || !data.text.trim()) throw new Error("AI ตอบกลับว่าง ลองใหม่อีกครั้ง");
-  return data.text.trim();
-}
-
 /* ---------- 1. โครงสร้างหลักสูตร + ตารางเกรด (Source of Truth) ---------- */
 
 const GRADE_POINTS = {
@@ -1151,151 +1121,41 @@ function LineChart({ data }) {
 /* แนวโน้มสายอาชีพ — heuristic จากรายวิชาจริง (โชว์ในแท็บภาพรวม) */
 function CareerTrend({ courses }) {
   const { top, hasEnough } = useMemo(() => analyzeCareer(courses), [courses]);
-  const [aiText, setAiText] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiErr, setAiErr] = useState("");
-  // แชทถาม-ตอบเรื่องอาชีพ
-  const [chatQ, setChatQ] = useState("");
-  const [chat, setChat] = useState([]); // [{ role:"user"|"ai", text }]
-  const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef = React.useRef(null);
-  useEffect(() => { chatEndRef.current && chatEndRef.current.scrollIntoView({ block: "nearest" }); }, [chat, chatLoading]);
 
-  const runAI = async () => {
-    setAiLoading(true); setAiErr(""); setAiText("");
-    try {
-      const summary = top
-        .map((t) => `- ${t.name}: GPA เฉลี่ย ${t.gpaCredits > 0 ? round2(t.gpa) : "-"} จาก ${t.count} วิชา (${t.courses.map((c) => `${c.code} ${c.name}`).join(", ")})`)
-        .join("\n");
-      const prompt =
-        `คุณเป็นที่ปรึกษาแนะแนวอาชีพสำหรับนักศึกษาสาขา Digital Design\n` +
-        `ต่อไปนี้คือ "แทร็กทักษะ" ที่เด่นของนักศึกษา คิดจากรายวิชาที่ลงเรียนและเกรด (สเกล GPA 0-4):\n\n${summary}\n\n` +
-        `ช่วยเขียนคำแนะนำแนวทางอาชีพเป็นภาษาไทย กระชับ เป็นกันเอง (ไม่เกิน 5 ประโยค) โดย ` +
-        `(1) ชี้จุดแข็งจากแทร็กที่เด่นที่สุด (2) แนะนำตำแหน่งงาน/สายอาชีพที่เหมาะ 2-3 อย่าง ` +
-        `(3) บอกทักษะหรือวิชาที่ควรเสริมต่อ · ห้ามสัญญาผลลัพธ์ ให้เป็นเพียงคำแนะนำเบื้องต้น`;
-      setAiText(await callGemini(prompt));
-    } catch (e) {
-      setAiErr((e && e.message) || "เรียก AI ไม่สำเร็จ ลองใหม่อีกครั้ง");
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const askCareer = async () => {
-    const q = chatQ.trim();
-    if (!q || chatLoading) return;
-    setChat((prev) => [...prev, { role: "user", text: q }]);
-    setChatQ("");
-    setChatLoading(true);
-    try {
-      const courseList = courses.length
-        ? courses.map((c) => `${c.code} ${c.name} (เกรด ${c.grade})`).join("; ")
-        : "(ยังไม่มีวิชาที่ลงเรียน)";
-      const prompt =
-        `คุณเป็นที่ปรึกษาแนะแนวอาชีพของนักศึกษาสาขา Digital Design (หลักสูตร 133 หน่วยกิต ` +
-        `มีหมวด: ศึกษาทั่วไป, วิชาแกน, วิชาชีพบังคับ/เลือก, วิชาเลือกเสรี)\n` +
-        `คำถามของนักศึกษา: "${q}"\n\n` +
-        `วิชาที่ลงเรียนไปแล้ว: ${courseList}\n\n` +
-        `ตอบเป็นภาษาไทย กระชับ เป็นกันเอง (ไม่เกิน 6 ประโยค): ` +
-        `(1) ประเมินว่าพื้นฐานจากวิชาที่เรียนมาตรงกับอาชีพที่ถามแค่ไหน ` +
-        `(2) แนะนำชัด ๆ ว่าควรเพิ่ม/เน้นวิชาหรือทักษะอะไรต่อเพื่อไปสายนั้น ` +
-        `(3) แนะนำประเภทวิชาที่ควรมองหา (เช่น วิชาชีพเลือก/วิชาเลือกเสรี) · ` +
-        `เป็นคำแนะนำเบื้องต้น ไม่ใช่คำมั่นสัญญา`;
-      const ans = await callGemini(prompt);
-      setChat((prev) => [...prev, { role: "ai", text: ans }]);
-    } catch (e) {
-      setChat((prev) => [...prev, { role: "ai", text: "ขออภัย เรียก AI ไม่สำเร็จ · " + ((e && e.message) || "") }]);
-    } finally {
-      setChatLoading(false);
-    }
-  };
+  if (!hasEnough) {
+    return (
+      <div className="gc-chart-empty">
+        ยังมีข้อมูลไม่พอที่จะประเมินแนวโน้มสายอาชีพ · ลองเพิ่มวิชาเฉพาะทางให้มากขึ้น (อย่างน้อย 3 วิชาต่อสาย)
+      </div>
+    );
+  }
 
   return (
     <div>
-      {hasEnough ? (
-        <>
-          <div className="gc-tracklist">
-            {top.map((t, i) => (
-              <div key={t.id} className="gc-track">
-                <div className="gc-track-head">
-                  <span className="gc-track-rank gc-num">{i + 1}</span>
-                  <span className="gc-track-name">{t.name}</span>
-                  <span className="gc-track-gpa">
-                    <b className="gc-num">{t.gpaCredits > 0 ? round2(t.gpa) : "—"}</b>
-                    <span>GPA เฉลี่ย</span>
-                  </span>
-                </div>
-                <p className="gc-track-evidence">
-                  <b>{t.count} วิชา:</b>{" "}
-                  {t.courses.slice(0, 5).map((c) => c.code).join(" · ")}
-                  {t.courses.length > 5 ? ` +${t.courses.length - 5}` : ""}
-                </p>
-                <p className="gc-track-advice">{t.advice}</p>
-              </div>
-            ))}
-          </div>
-          <div className="gc-disclaimer" style={{ marginTop: 12 }}>
-            {Ic.warn}
-            <span>ประเมินจากเกรดวิชาที่ลงเรียนเท่านั้น เป็นแนวทางเบื้องต้น ไม่ใช่การประเมินทางจิตวิทยาอาชีพ · ควรปรึกษาอาจารย์แนะแนวหรือผู้เชี่ยวชาญเพิ่มเติม</span>
-          </div>
-
-          {AI_ENABLED && (
-            <div className="gc-ai">
-              {!aiText && !aiLoading && (
-                <button className="gc-btn gc-btn-outline gc-btn-block" onClick={runAI}>
-                  ✨ ให้ AI ช่วยวิเคราะห์เพิ่มเติม
-                </button>
-              )}
-              {aiLoading && <div className="gc-chart-empty" style={{ marginTop: 4 }}>กำลังให้ Gemini วิเคราะห์…</div>}
-              {aiErr && <p className="gc-inline-warn" style={{ marginTop: 8 }}>{Ic.warn} {aiErr}</p>}
-              {aiText && (
-                <div className="gc-ai-box">
-                  <div className="gc-ai-head">
-                    <span className="gc-ai-badge">✨ AI · Gemini</span>
-                    <button className="gc-link" onClick={runAI}>วิเคราะห์ใหม่</button>
-                  </div>
-                  <p className="gc-ai-text">{aiText}</p>
-                  <p className="gc-ai-note">สร้างโดย AI · เป็นความเห็นประกอบ ควรใช้วิจารณญาณและปรึกษาอาจารย์แนะแนวเพิ่มเติม</p>
-                </div>
-              )}
+      <div className="gc-tracklist">
+        {top.map((t, i) => (
+          <div key={t.id} className="gc-track">
+            <div className="gc-track-head">
+              <span className="gc-track-rank gc-num">{i + 1}</span>
+              <span className="gc-track-name">{t.name}</span>
+              <span className="gc-track-gpa">
+                <b className="gc-num">{t.gpaCredits > 0 ? round2(t.gpa) : "—"}</b>
+                <span>GPA เฉลี่ย</span>
+              </span>
             </div>
-          )}
-        </>
-      ) : (
-        <div className="gc-chart-empty">
-          ยังมีข้อมูลไม่พอที่จะประเมินแนวโน้มสายอาชีพ · ลองเพิ่มวิชาเฉพาะทางให้มากขึ้น (อย่างน้อย 3 วิชาต่อสาย)
-        </div>
-      )}
-
-      {/* แชทถามอาชีพกับ AI — AI จะดูวิชาที่เรียนแล้วแนะนำว่าควรเพิ่มอะไร */}
-      {AI_ENABLED && (
-        <div className="gc-chat">
-          <p className="gc-chat-title">💬 ถาม AI เรื่องอาชีพ</p>
-          {chat.length === 0 && !chatLoading && (
-            <p className="gc-chat-hint">พิมพ์อาชีพที่อยากทำ แล้ว AI จะดูวิชาที่คุณเรียนมาและแนะนำว่าควรเสริมอะไรต่อ</p>
-          )}
-          {(chat.length > 0 || chatLoading) && (
-            <div className="gc-chat-log">
-              {chat.map((m, i) => (
-                <div key={i} className={`gc-chat-msg ${m.role === "user" ? "me" : "ai"}`}>{m.text}</div>
-              ))}
-              {chatLoading && <div className="gc-chat-msg ai loading">กำลังคิด…</div>}
-              <div ref={chatEndRef} />
-            </div>
-          )}
-          <div className="gc-chat-input">
-            <input
-              className="gc-input"
-              placeholder="เช่น อยากเป็น UX Designer ต้องเรียนอะไรเพิ่ม?"
-              value={chatQ}
-              onChange={(e) => setChatQ(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") askCareer(); }}
-            />
-            <button className="gc-btn gc-btn-primary" onClick={askCareer} disabled={chatLoading || !chatQ.trim()}>ถาม</button>
+            <p className="gc-track-evidence">
+              <b>{t.count} วิชา:</b>{" "}
+              {t.courses.slice(0, 5).map((c) => c.code).join(" · ")}
+              {t.courses.length > 5 ? ` +${t.courses.length - 5}` : ""}
+            </p>
+            <p className="gc-track-advice">{t.advice}</p>
           </div>
-          <p className="gc-ai-note">คำตอบสร้างโดย AI · เป็นแนวทางเบื้องต้น ควรปรึกษาอาจารย์แนะแนวเพิ่มเติม</p>
-        </div>
-      )}
+        ))}
+      </div>
+      <div className="gc-disclaimer" style={{ marginTop: 12 }}>
+        {Ic.warn}
+        <span>ประเมินจากเกรดวิชาที่ลงเรียนเท่านั้น เป็นแนวทางเบื้องต้น ไม่ใช่การประเมินทางจิตวิทยาอาชีพ · ควรปรึกษาอาจารย์แนะแนวหรือผู้เชี่ยวชาญเพิ่มเติม</span>
+      </div>
     </div>
   );
 }
@@ -1718,30 +1578,6 @@ select.gc-input{appearance:none;-webkit-appearance:none;
 .gc-disclaimer{display:flex;gap:7px;align-items:flex-start;font-size:11px;color:var(--muted);
   line-height:1.5;margin-top:4px;background:var(--surface-2);border-radius:12px;padding:9px 12px;}
 .gc-disclaimer svg{width:14px;height:14px;flex:none;margin-top:1px;color:var(--warning);}
-
-/* AI (Gemini) analysis block */
-.gc-ai{margin-top:12px;}
-.gc-ai-box{border:2px solid var(--primary);border-radius:16px;padding:14px 16px;background:var(--surface-2);}
-.gc-ai-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-.gc-ai-badge{font-size:11px;font-weight:800;color:var(--on-primary);background:var(--primary);
-  padding:4px 11px;border-radius:999px;letter-spacing:.02em;}
-.gc-ai-text{font-size:13px;line-height:1.6;white-space:pre-wrap;}
-.gc-ai-note{font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
-
-/* Career chat (ถาม AI เรื่องอาชีพ) */
-.gc-chat{margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft);}
-.gc-chat-title{font-size:13px;font-weight:800;margin-bottom:8px;}
-.gc-chat-hint{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px;}
-.gc-chat-log{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;max-height:340px;overflow-y:auto;}
-.gc-chat-msg{font-size:12.5px;line-height:1.55;padding:9px 12px;border-radius:14px;max-width:88%;white-space:pre-wrap;word-break:break-word;}
-.gc-chat-msg.me{align-self:flex-end;background:var(--primary);color:var(--on-primary);border-bottom-right-radius:4px;}
-.gc-chat-msg.ai{align-self:flex-start;background:var(--surface);border:1.5px solid var(--line-soft);border-bottom-left-radius:4px;}
-.gc-chat-msg.loading{opacity:.65;}
-.gc-chat-input{display:flex;gap:8px;align-items:stretch;}
-.gc-chat-input .gc-input{flex:1;min-width:0;}
-.gc-chat-input .gc-btn{flex:none;padding:12px 18px;}
-.gc-btn:disabled{opacity:.5;cursor:default;}
-.gc-input::placeholder{color:var(--muted);opacity:.6;}
 
 /* Dialog */
 .gc-dialog{width:100%;max-width:340px;background:var(--surface);border:2px solid var(--line);
